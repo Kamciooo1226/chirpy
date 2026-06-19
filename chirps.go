@@ -2,13 +2,23 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Kamciooo1226/chirpy/internal/database"
 	"github.com/google/uuid"
 )
+
+type Chirp struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserID    uuid.UUID `json:"user_id"`
+}
 
 var badWords = map[string]struct{}{
 	"kerfuffle": {},
@@ -49,15 +59,13 @@ func (cfg *apiConfig) handlerChirpsCreate(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	mappedChirp := Chirp{
+	respondWithJSON(w, http.StatusCreated, Chirp{
 		ID:        chirp.ID,
 		CreatedAt: chirp.CreatedAt,
 		UpdatedAt: chirp.UpdatedAt,
 		Body:      chirp.Body,
 		UserID:    chirp.UserID,
-	}
-
-	respondWithJSON(w, http.StatusCreated, mappedChirp)
+	})
 }
 
 func cleanBody(body string, badWords map[string]struct{}) string {
@@ -71,4 +79,54 @@ func cleanBody(body string, badWords map[string]struct{}) string {
 
 	clean_body := strings.Join(words, " ")
 	return clean_body
+}
+
+func (cfg *apiConfig) handlerGetAllChirps(w http.ResponseWriter, r *http.Request) {
+	allChirps := []Chirp{}
+	chirps, err := cfg.db.GetAllChirps(r.Context())
+	if err != nil {
+		msg := "Error retrieving chirps from the database"
+		log.Print(msg)
+		respondWithError(w, http.StatusInternalServerError, msg, nil)
+	}
+
+	for _, chirp := range chirps {
+		allChirps = append(allChirps, Chirp{
+			ID:        chirp.ID,
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID,
+		})
+	}
+
+	respondWithJSON(w, http.StatusOK, allChirps)
+
+}
+
+func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, r *http.Request) {
+	chirpID, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		msg := fmt.Sprintf("The specified chirp_id: %v is not a valid chirp ID", r.PathValue("chirpID"))
+		log.Print(msg)
+		respondWithError(w, http.StatusBadRequest, msg, nil)
+		return
+	}
+
+	chirp, err := cfg.db.GetChirp(r.Context(), chirpID)
+	if err != nil {
+		msg := fmt.Sprintf("The specified chirp_id: %v does not exist", chirpID)
+		log.Print(msg)
+		respondWithError(w, http.StatusNotFound, msg, nil)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, Chirp{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
+	})
+
 }
