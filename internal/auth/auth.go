@@ -1,6 +1,9 @@
 package auth
 
 import (
+	"errors"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/alexedwards/argon2id"
@@ -47,5 +50,35 @@ func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (str
 }
 
 func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
+	claims := &jwt.RegisteredClaims{}
 
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(tokenSecret), nil
+	})
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	userIDString, err := token.Claims.GetSubject()
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	// uuid.Parse returns both UUID and error
+	return uuid.Parse(userIDString)
+}
+
+func GetBearerToken(headers http.Header) (string, error) {
+	authHeader := headers.Get("Authorization")
+	if authHeader == "" {
+		return "", errors.New("Authorization header missing")
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) < 2 || parts[0] != "Bearer" {
+		return "", errors.New("Authentication header not present or malformed")
+	}
+
+	token := strings.TrimSpace(parts[1])
+	return token, nil
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Kamciooo1226/chirpy/internal/auth"
 	"github.com/Kamciooo1226/chirpy/internal/database"
 	"github.com/google/uuid"
 )
@@ -28,13 +29,26 @@ var badWords = map[string]struct{}{
 
 func (cfg *apiConfig) handlerChirpsCreate(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
+	}
+
+	bearerToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Print(err)
+		respondWithError(w, http.StatusUnauthorized, "Authorization failed", err)
+		return
+	}
+
+	userID, err := auth.ValidateJWT(bearerToken, cfg.secret)
+	if err != nil {
+		log.Print(err)
+		respondWithError(w, http.StatusUnauthorized, "Authorization failed", nil)
+		return
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		log.Printf("Error decoding parameters: %s", err)
 		respondWithError(w, http.StatusBadRequest, "Error decoding parameters", err)
@@ -51,7 +65,7 @@ func (cfg *apiConfig) handlerChirpsCreate(w http.ResponseWriter, r *http.Request
 
 	chirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
 		Body:   cleaned_body,
-		UserID: params.UserID,
+		UserID: userID,
 	})
 	if err != nil {
 		log.Printf("Failed to create chirp.")

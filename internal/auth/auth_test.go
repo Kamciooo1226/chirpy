@@ -1,7 +1,11 @@
 package auth
 
 import (
+	"net/http"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 func TestCheckPasswordHash(t *testing.T) {
@@ -62,6 +66,95 @@ func TestCheckPasswordHash(t *testing.T) {
 			}
 			if !tt.wantErr && match != tt.matchPassword {
 				t.Errorf("CheckPasswordHash() expects %v, got %v", tt.matchPassword, match)
+			}
+		})
+	}
+}
+
+func TestMakeAndValidateJWT(t *testing.T) {
+	userID, _ := uuid.NewRandom()
+
+	tests := []struct {
+		name        string
+		tokenSecret string
+		validateKey string
+		expiresIn   time.Duration
+		wantErr     bool
+	}{
+		{
+			name:        "Valid token",
+			tokenSecret: "securesecret",
+			validateKey: "securesecret",
+			expiresIn:   time.Minute,
+			wantErr:     false,
+		},
+		{
+			name:        "Expired token",
+			tokenSecret: "securesecret",
+			validateKey: "securesecret",
+			expiresIn:   -time.Minute,
+			wantErr:     true,
+		},
+		{
+			name:        "Wrong secret",
+			tokenSecret: "securesecret",
+			validateKey: "differentsecret",
+			expiresIn:   time.Minute,
+			wantErr:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			token, _ := MakeJWT(userID, tt.tokenSecret, tt.expiresIn)
+			gotUserID, err := ValidateJWT(token, tt.validateKey)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateJWT() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && userID != gotUserID {
+				t.Errorf("ValidateJWT() expects %v, got %v", userID, gotUserID)
+			}
+		})
+	}
+}
+
+func TestGetBearerToken(t *testing.T) {
+	validHeader := http.Header{}
+	validHeader.Set("Authorization", "Bearer token")
+	invalidHeader := http.Header{}
+	invalidHeader.Set("Something", "other thing")
+	missingHeader := http.Header{}
+
+	tests := []struct {
+		name       string
+		authHeader http.Header
+		wantErr    bool
+	}{
+		{
+			name:       "Valid authorization header",
+			authHeader: validHeader,
+			wantErr:    false,
+		},
+		{
+			name:       "Invalid authorization header",
+			authHeader: invalidHeader,
+			wantErr:    true,
+		},
+		{
+			name:       "Missing authorization header",
+			authHeader: missingHeader,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			token, err := GetBearerToken(tt.authHeader)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetBearerToken() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && token == "" {
+				t.Errorf("GetBearerToken() expected to return token string, empty instead")
 			}
 		})
 	}

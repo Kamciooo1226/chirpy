@@ -4,14 +4,25 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/Kamciooo1226/chirpy/internal/auth"
+	"github.com/google/uuid"
 )
+
+type UserLogin struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
+	Token     string    `json:"token"`
+}
 
 func (cfg *apiConfig) handlerUserLogin(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email            string `json:"email"`
+		Password         string `json:"password"`
+		ExpiresInSeconds int    `json:"expires_in_seconds"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -43,11 +54,25 @@ func (cfg *apiConfig) handlerUserLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, User{
+	const maxExpiryTime int = 3600
+	expiresIn := params.ExpiresInSeconds
+	if expiresIn == 0 || expiresIn > maxExpiryTime {
+		expiresIn = maxExpiryTime
+	}
+
+	token, err := auth.MakeJWT(user.ID, cfg.secret, time.Duration(expiresIn)*time.Second)
+	if err != nil {
+		log.Printf("An error occurred when creating JWT: %v", err)
+		respondWithError(w, http.StatusInternalServerError, "An error occurred when creating JWT", nil)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, UserLogin{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email:     user.Email,
+		Token:     token,
 	})
 
 }
