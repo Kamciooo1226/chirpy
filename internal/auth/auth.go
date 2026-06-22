@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"
@@ -74,11 +76,32 @@ func GetBearerToken(headers http.Header) (string, error) {
 		return "", errors.New("Authorization header missing")
 	}
 
-	parts := strings.Split(authHeader, " ")
-	if len(parts) < 2 || parts[0] != "Bearer" {
+	parts := strings.Fields(authHeader)
+	if len(parts) != 2 || parts[0] != "Bearer" {
 		return "", errors.New("Authentication header not present or malformed")
 	}
 
-	token := strings.TrimSpace(parts[1])
+	token := parts[1]
 	return token, nil
+}
+
+func MakeRefreshToken() string {
+	data := make([]byte, 32)
+	rand.Read(data)
+	return hex.EncodeToString(data)
+}
+
+func GetAPIKey(headers http.Header) (string, error) {
+	authHeader := headers.Get("Authorization")
+	if authHeader == "" {
+		return "", errors.New("Authorization header missing")
+	}
+
+	parts := strings.Fields(authHeader)
+	if len(parts) != 2 || parts[0] != "ApiKey" {
+		return "", errors.New("Authentication header not present or malformed")
+	}
+
+	apiKey := parts[1]
+	return apiKey, nil
 }

@@ -7,22 +7,24 @@ import (
 	"time"
 
 	"github.com/Kamciooo1226/chirpy/internal/auth"
+	"github.com/Kamciooo1226/chirpy/internal/database"
 	"github.com/google/uuid"
 )
 
 type UserLogin struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
-	Token     string    `json:"token"`
+	ID           uuid.UUID `json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Email        string    `json:"email"`
+	Token        string    `json:"token"`
+	RefreshToken string    `json:"refresh_token"`
+	IsChirpyRed  bool      `json:"is_chirpy_red"`
 }
 
 func (cfg *apiConfig) handlerUserLogin(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email            string `json:"email"`
-		Password         string `json:"password"`
-		ExpiresInSeconds int    `json:"expires_in_seconds"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -54,25 +56,32 @@ func (cfg *apiConfig) handlerUserLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	const maxExpiryTime int = 3600
-	expiresIn := params.ExpiresInSeconds
-	if expiresIn == 0 || expiresIn > maxExpiryTime {
-		expiresIn = maxExpiryTime
-	}
-
-	token, err := auth.MakeJWT(user.ID, cfg.secret, time.Duration(expiresIn)*time.Second)
+	token, err := auth.MakeJWT(user.ID, cfg.secret, time.Hour)
 	if err != nil {
 		log.Printf("An error occurred when creating JWT: %v", err)
 		respondWithError(w, http.StatusInternalServerError, "An error occurred when creating JWT", nil)
 		return
 	}
 
+	refreshToken, err := cfg.db.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		Token:     auth.MakeRefreshToken(),
+		UserID:    user.ID,
+		ExpiresAt: time.Now().AddDate(0, 0, 60),
+	})
+	if err != nil {
+		log.Printf("An error occurred when creating Refresh Token: %v", err)
+		respondWithError(w, http.StatusInternalServerError, "An error occurred when creating Refresh Token", nil)
+		return
+	}
+
 	respondWithJSON(w, http.StatusOK, UserLogin{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
-		Token:     token,
+		ID:           user.ID,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+		Email:        user.Email,
+		Token:        token,
+		RefreshToken: refreshToken.Token,
+		IsChirpyRed:  user.IsChirpyRed,
 	})
 
 }
